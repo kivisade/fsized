@@ -1,0 +1,17 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/dustin/go-humanize",
+			"repository": "https://github.com/dustin/go-humanize",
+			"revision": "259d2a102b871d17f30e3cd9881a642961a1e486",
+			"branch": "master"
+		},
+		{
+			"importpath": "github.com/kivisade/tabfmt",
+			"repository": "https://github.com/kivisade/tabfmt",
+			"revision": "a1bd7c150f24cef26c62cc2b7cadc519b3ceb269",
+			"branch": "master"
+		}
+	]
+}
