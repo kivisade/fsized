@@ -6,12 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
-
-	"github.com/kivisade/tabfmt"
-	"github.com/dustin/go-humanize"
 	"time"
 	"regexp"
 	"strconv"
+	"runtime"
+
+	"github.com/kivisade/tabfmt"
+	"github.com/dustin/go-humanize"
 )
 
 func p2(n uint64) (p uint) {
@@ -107,6 +108,9 @@ func (s *StatCounter) Walk(path string, f os.FileInfo, err error) (abort error) 
 		return
 	}
 	if f.IsDir() {
+		if runtime.GOOS[:] == "windows" && f.Mode() & os.ModeSymlink != 0 { // NB: runtime.GOOS[:] is to mute the annoying "condition is always true" warning
+			return filepath.SkipDir
+		}
 		return
 	}
 	s.addFile(uint64(f.Size()))
@@ -176,19 +180,28 @@ func (s *StatCounter) GetTotalCount() uint64 {
 	return s.totalCount
 }
 
+func (s *StatCounter) GetTotalOverhead() uint64 {
+	return s.totalOverhead
+}
+
 func main() {
 	var (
-		stats      *StatCounter
-		ready      chan error = make(chan error)
-		running    bool       = true
-		root       string
-		block      string
-		blockSz    uint64
-		out        string
-		start      time.Time
-		runtime    time.Duration
-		totalCount uint64
-		fps        float64
+		stats       *StatCounter
+		ready       chan error = make(chan error)
+		running     bool       = true
+		err         error
+		root        string
+		block       string
+		blockSz     uint64
+		out         string
+		start       time.Time
+		runningTime time.Duration
+		totalCount  uint64
+		fps         float64
+		ohdActual   uint64
+		ohdEstimate uint64
+		ohdPrc      float64
+		ohdSgn      string = "better"
 	)
 
 	flag.StringVar(&out, "out", "formatted", "Output format ('formatted' for pretty-printed table or 'tab' for Excel-friendly tabbed format)")
@@ -227,15 +240,16 @@ func main() {
 		}
 	}()
 
-	if err := <-ready; err != nil {
-		running = false
+	if err, running = <-ready, false; err != nil {
 		log.Printf("Error while recursively walking %s: %s", root, err)
 	}
 
-	runtime = time.Since(start)
+	runningTime = time.Since(start)
 	if totalCount = stats.GetTotalCount(); totalCount > 0 {
-		fps = float64(totalCount) / runtime.Seconds()
+		fps = float64(totalCount) / runningTime.Seconds()
 	}
+
+	fmt.Println()
 
 	switch out {
 	case "formatted":
@@ -244,7 +258,15 @@ func main() {
 		stats.PrintSimple()
 	}
 
-	fmt.Printf("\nScanned %d files in %s (avg. %.2f files per second).\n", totalCount, runtime, fps)
-	fmt.Printf("Rough estimate of overhead per %d files using allocation units of %d bytes is %s.\n",
-		totalCount, blockSz, humanize.Bytes(totalCount*blockSz/2))
+	ohdActual, ohdEstimate = stats.GetTotalOverhead(), totalCount*blockSz/2
+	ohdPrc = 1 - float64(ohdActual) / float64(ohdEstimate)
+	if ohdPrc < 0 {
+		ohdPrc *= -1
+		ohdSgn = "worse"
+	}
+
+	fmt.Printf("\nScanned %d files in %s (avg. %.2f files per second).\n\n", totalCount, runningTime, fps)
+	fmt.Printf("Rough estimate of overhead per %d files using allocation units of %d bytes is %s. " +
+		"Actual overhead of %s is %.2f%% %s.\n",
+		totalCount, blockSz, humanize.Bytes(ohdEstimate), humanize.Bytes(ohdActual), 100*ohdPrc, ohdSgn)
 }
