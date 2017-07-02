@@ -9,6 +9,9 @@ import (
 
 	"github.com/kivisade/tabfmt"
 	"github.com/dustin/go-humanize"
+	"time"
+	"regexp"
+	"strconv"
 )
 
 func p2(n uint64) (p uint) {
@@ -169,24 +172,55 @@ func (s *StatCounter) PrintSimple() {
 	}
 }
 
+func (s *StatCounter) GetTotalCount() uint64 {
+	return s.totalCount
+}
+
 func main() {
 	var (
-		stats   *StatCounter
-		blockSz uint64
-		out     string
+		stats      *StatCounter
+		root       string
+		block      string
+		blockSz    uint64
+		out        string
+		start      time.Time
+		runtime    time.Duration
+		totalCount uint64
+		fps        float64
 	)
 
 	flag.StringVar(&out, "out", "formatted", "Output format ('formatted' for pretty-printed table or 'tab' for Excel-friendly tabbed format)")
-	flag.Uint64Var(&blockSz, "block", 4096, "Disk block (allocation unit) size in bytes")
+	flag.StringVar(&block, "block", "4096", "Disk block (allocation unit) size in bytes")
 
 	flag.Parse()
 
-	stats = NewStatCounter(blockSz)
+	if block != "" {
+		rx := regexp.MustCompile(`^(\d+)(k?)$`)
+		if !rx.MatchString(block) {
+			log.Println("If provided, block size should be either positive integer (number of bytes), or positive integer with 'k' suffix (number of kilobytes, e.g. '8k').")
+			os.Exit(1)
+		}
+		m := rx.FindStringSubmatch(block)
+		_blockSz, _ := strconv.Atoi(m[1])
+		blockSz = uint64(_blockSz)
+		if m[2] == "k" {
+			blockSz *= 1024
+		}
+	} else {
+		blockSz = 4096
+	}
 
-	root := flag.Arg(0)
+	stats = NewStatCounter(blockSz)
+	root = flag.Arg(0)
+	start = time.Now()
 
 	if err := filepath.Walk(root, stats.Walk); err != nil {
 		log.Printf("Error while recursively walking %s: %s", root, err)
+	}
+
+	runtime = time.Since(start)
+	if totalCount = stats.GetTotalCount(); totalCount > 0 {
+		fps = float64(totalCount) / runtime.Seconds()
 	}
 
 	switch out {
@@ -195,4 +229,8 @@ func main() {
 	default:
 		stats.PrintSimple()
 	}
+
+	fmt.Printf("\nFsized processed %d files in %s (avg. %.2f files per second).\n", totalCount, runtime, fps)
+	fmt.Printf("Rough estimate of overhead per %d files using %d allocation units is %s.\n",
+		totalCount, blockSz, humanize.Bytes(totalCount*blockSz/2))
 }

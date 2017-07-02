@@ -13,5 +13,5 @@ The following stats are calculated per each file group:
 
 Allocation units and overhead are calculated based on allocation unit
 size, which can be specified with optional `--block` commandline switch,
-e.g.: `--block=16276`. If `--block` is not provided, default value of
-4096 bytes is assumed for calculations.
+e.g.: `--block=16276` or `--block=8k`. If `--block` is not provided,
+default value of 4096 bytes is assumed for calculations.
