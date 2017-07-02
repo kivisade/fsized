@@ -179,6 +179,8 @@ func (s *StatCounter) GetTotalCount() uint64 {
 func main() {
 	var (
 		stats      *StatCounter
+		ready      chan error = make(chan error)
+		running    bool       = true
 		root       string
 		block      string
 		blockSz    uint64
@@ -214,7 +216,19 @@ func main() {
 	root = flag.Arg(0)
 	start = time.Now()
 
-	if err := filepath.Walk(root, stats.Walk); err != nil {
+	go func() {
+		ready <- filepath.Walk(root, stats.Walk)
+	}()
+
+	go func() {
+		for running {
+			time.Sleep(1 * time.Second)
+			log.Printf("Running for %ds, scanned %d files.\n", uint(time.Since(start).Seconds()), stats.GetTotalCount())
+		}
+	}()
+
+	if err := <-ready; err != nil {
+		running = false
 		log.Printf("Error while recursively walking %s: %s", root, err)
 	}
 
@@ -230,7 +244,7 @@ func main() {
 		stats.PrintSimple()
 	}
 
-	fmt.Printf("\nFsized processed %d files in %s (avg. %.2f files per second).\n", totalCount, runtime, fps)
-	fmt.Printf("Rough estimate of overhead per %d files using %d allocation units is %s.\n",
+	fmt.Printf("\nScanned %d files in %s (avg. %.2f files per second).\n", totalCount, runtime, fps)
+	fmt.Printf("Rough estimate of overhead per %d files using allocation units of %d bytes is %s.\n",
 		totalCount, blockSz, humanize.Bytes(totalCount*blockSz/2))
 }
