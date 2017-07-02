@@ -55,7 +55,7 @@ func sizeRange(p2 uint) string {
 }
 
 func alloc(fileSz, unitSz uint64) (nBlocks, overhead uint64) {
-	if unitSz != 0 {
+	if fileSz != 0 && unitSz != 0 {
 		nBlocks, overhead = fileSz/unitSz+1, unitSz-fileSz%unitSz
 	}
 	return
